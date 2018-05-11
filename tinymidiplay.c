@@ -1,6 +1,7 @@
 // based on https://community.atmel.com/projects/sd-card-midi-player
 
 #include <stdio.h>
+#include <unistd.h>
 
 typedef signed char int8_t;
 typedef unsigned char uint8_t;
@@ -162,7 +163,7 @@ void MIDIinit(void)
 
 void MidiOut( uint8_t x )
 {
-  printf("%02x", x);
+  //printf("%02x", x);
   // Send a byte to the MIDI out port (Tx)
 }
 
@@ -340,10 +341,10 @@ uint8_t readTrackEvent(void)
   // Output to MIDI device
   if(  Event.event != 0xFF )
   {
-    while( millis < nextTime ) // Wait...
-    {
+    if (millis != nextTime) {
       printf("\nwait till %08d\n", nextTime);
-      millis = nextTime; /// !!!!
+      usleep(ms * 1000);
+      millis = nextTime;
     }
     MidiOut( Event.event );
     for( uint32_t i=0; i<Event.nbdata && i<maxdata; i++ ) MidiOut( Event.data[i] );
