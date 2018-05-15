@@ -1,6 +1,6 @@
 // based on https://community.atmel.com/projects/sd-card-midi-player
 
-#include <stdio.h>
+//#include <stdio.h>
 #include <unistd.h>
 
 typedef signed char int8_t;
@@ -130,7 +130,7 @@ uint8_t  readTrackEvent(void);
 void     allSoundOff(void);
 
 // Midi file, type 0
-FILE* inFile;
+//FILE* inFile;
 
 // Position in Track
 uint32_t tpos     = 0;
@@ -141,7 +141,7 @@ uint8_t runningEvent = 0;
 
 // TEMPO (microsec/beat)
 uint32_t Tempo = 500000;
-double   TempoFactor = 1.0;
+//double   TempoFactor = 1.0;
 
 // Shared variables
 MTHD Header;
@@ -153,7 +153,7 @@ uint32_t millis, nextTime = 0;
 
 uint8_t SDgetc(void)
 {
-  return (uint8_t)fgetc(inFile);
+  return 123; //(uint8_t)fgetc(inFile);
 }
 
 void MIDIinit(void)
@@ -335,15 +335,16 @@ uint8_t readTrackEvent(void)
   }
 
   // Calculate next time on which data shall be played
-  ms = ( Event.wait * (uint32_t)(Tempo / TempoFactor) ) / Header.division / 1000;
+//  ms = ( Event.wait * (uint32_t)(Tempo / TempoFactor) ) / Header.division / 1000;
+  ms = ( Event.wait * Tempo ) / Header.division / 1000;
   nextTime += ms;
 
   // Output to MIDI device
   if(  Event.event != 0xFF )
   {
     if (millis != nextTime) {
-      printf("\nwait till %08d\n", nextTime);
-      usleep(ms * 1000);
+      //printf("\nwait till %08d\n", nextTime);
+      //usleep(ms * 1000);
       millis = nextTime;
     }
     MidiOut( Event.event );
@@ -380,10 +381,26 @@ void readMidi(void)
 }
 
 
+int __FASTCALL__ zxpopen(const char* cmdline)
+{
+  int len = strlen(cmdline);
+  cmdLine[len-1] = cmdLine[len-1] + 128;
+
+  #asm
+  ex    de,hl
+  call  $1ffa
+
+  ld    bc,$4007
+  ld    a,1
+  out   (c),a
+
+  ld    hl,100
+  #endasm
+}
+
 int main( int argc, char** argv )
 {
-  inFile = fopen(argv[1], "rb");
-  if (inFile != NULL) {
+  if (zxpopen("type0.mid") == 0)
     readMidi();
     allSoundOff();
   }
