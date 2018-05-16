@@ -381,18 +381,16 @@ void readMidi(void)
 }
 
 
-int __FASTCALL__ zxpopen(const char* cmdline)
+int __FASTCALL__ zxpopen(char* cmdline)
 {
-	while (*cmdline)
+  char* p = cmdline;
+	while (*p)
 	{
-		*cmdline = ascii_zx(*cmdline);
-		++cmdline;
+		*p = ascii_zx(*cmdline);
+		++p;
 	}
-  --cmdline;
-  *cmdline = (*cmdline) + 128;
-
-  int len = strlen(cmdline);
-  cmdline[len-1] = cmdline[len-1] + 128;
+  --p;
+  *p = (*p) + 128;
 
   #asm
   ex    de,hl           ; send filename
