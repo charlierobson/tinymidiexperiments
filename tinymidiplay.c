@@ -383,24 +383,46 @@ void readMidi(void)
 
 int __FASTCALL__ zxpopen(const char* cmdline)
 {
+	while (*cmdline)
+	{
+		*cmdline = ascii_zx(*cmdline);
+		++cmdline;
+	}
+  --cmdline;
+  *cmdline = (*cmdline) + 128;
+
   int len = strlen(cmdline);
-  cmdLine[len-1] = cmdLine[len-1] + 128;
+  cmdline[len-1] = cmdline[len-1] + 128;
 
   #asm
-  ex    de,hl
+  ex    de,hl           ; send filename
   call  $1ffa
 
-  ld    bc,$4007
-  ld    a,1
+  ld    bc,$8007        ; open read
+  xor   a
   out   (c),a
 
-  ld    hl,100
+  call  $1ff6           ; get response
+  cp    $40
+  jr    z,opengood
+
+  ld    l,a
+  ld    h,0
+  ret
+
+opengood:
+  xor   a               ; read
+  ld    l,32            ; 32 bytes of file metadata
+  ld    de,16444        ; destination PRT-BUFF
+  call  $1ffc           ; transfer
+
+  ld    hl,0
   #endasm
 }
 
 int main( int argc, char** argv )
 {
-  if (zxpopen("type0.mid") == 0)
+  if (zxpopen("type0.mid") == 0) {
     readMidi();
     allSoundOff();
   }
