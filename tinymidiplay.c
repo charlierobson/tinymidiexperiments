@@ -125,7 +125,7 @@ uint8_t  readTrackChunk(void);
 uint16_t read16(void);
 uint32_t read32(void);
 uint32_t readVariableLength(void);
-uint8_t  readNdata( uint8_t start );
+uint8_t  readNdata(uint8_t start);
 uint8_t  readTrackEvent(void);
 void     allSoundOff(void);
 
@@ -141,7 +141,6 @@ uint8_t runningEvent = 0;
 
 // TEMPO (microsec/beat)
 uint32_t Tempo = 500000;
-//double   TempoFactor = 1.0;
 
 // Shared variables
 MTHD Header;
@@ -335,7 +334,6 @@ uint8_t readTrackEvent(void)
   }
 
   // Calculate next time on which data shall be played
-//  ms = ( Event.wait * (uint32_t)(Tempo / TempoFactor) ) / Header.division / 1000;
   ms = ( Event.wait * Tempo ) / Header.division / 1000;
   nextTime += ms;
 
@@ -380,49 +378,96 @@ void readMidi(void)
   }
 }
 
+// 16444 = pr_buff
 
-int __FASTCALL__ zxpopen(char* cmdline)
+void cvtcmd(unsigned char* buf)
 {
-  char* p = cmdline;
-	while (*p)
+	while (*buf)
 	{
-		*p = ascii_zx(*cmdline);
-		++p;
+		*buf = ascii_zx(*buf);
+		++buf;
 	}
-  --p;
-  *p = (*p) + 128;
+  --buf;
+  *buf = (*buf) + 128;
+}
+
+void terminate(unsigned char* name)
+{
+  name[strlen(name)-1] = name[strlen(name)-1] + 128;
+}
+
+unsigned char* zstrend(unsigned char* p)
+{
+  while(*p < 128) {
+    ++p;
+  }
+  return p;
+}
+
+unsigned char* zstrcpy(unsigned char* dest, char* str)
+{
+  int n = strlen(str);
+  strcpy(dest, str);
+  cvtcmd(dest);
+}
+
+
+int __FASTCALL__ zxpandCommand(unsigned char* cmdbuf)
+{
+  #asm
+  push  hl
+  #endasm
 
   #asm
-  ex    de,hl           ; send filename
-  call  $1ffa
-
-  ld    bc,$8007        ; open read
-  xor   a
-  out   (c),a
-
-  call  $1ff6           ; get response
-  cp    $40
-  jr    z,opengood
-
-  ld    l,a
+  pop   de
+  call  $1ff2
+  ld    a,(16445)
   ld    h,0
-  ret
-
-opengood:
-  xor   a               ; read
-  ld    l,32            ; 32 bytes of file metadata
-  ld    de,16444        ; destination PRT-BUFF
-  call  $1ffc           ; transfer
-
-  ld    hl,0
+  ld    l,a
   #endasm
 }
 
 int main( int argc, char** argv )
 {
-  if (zxpopen("type0.mid") == 0) {
-    readMidi();
-    allSoundOff();
+  int nchars;
+  int retCode;
+  unsigned char* meta = 16444; // pr_buff
+
+  memset(0x8000,0,0x80);
+
+  const char* fname = 0x8008;
+  strcpy(0x8000, "ope fil   ");
+  cvtcmd(0x8000);
+
+  strcpy(0x8080, "get par *32776");
+  cvtcmd(0x8080);
+
+  retCode = zxpandCommand(0x8080);
+  if (retCode != 0x40) {
+    puts("failed to retrieve parameter.");
+    puts("example usage: load \"mp:file\"");
+    return retCode & 0x3f;
   }
+
+  terminate(fname);
+
+  retCode = zxpandCommand(0x8000);
+  if (retCode != 0x40) {
+    unsigned char* p = zstrend(0x8000);
+    *p = *p ^ 128;
+    p = zstrcpy(p+1, ".mid");
+    *p = *p ^ 128;
+    retCode = zxpandCommand(0x8000);
+  }
+
+  if (retCode != 0x40) {
+    puts("failed to open file");
+    puts("example usage: load \"mp:file\"");
+    return retCode & 0x3f;
+  }
+
+  readMidi();
+  allSoundOff();
+
   return 0;
 }
