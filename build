@@ -1,1 +1,2 @@
-zcc +zx81 -startup=2 -create-app tinymidiplay.c
+zcc +zx81 -startup=2 -lzx81_math -create-app tinymidiplay.c
+cp a.P zxpandsdcard/

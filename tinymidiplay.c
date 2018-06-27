@@ -1,17 +1,7 @@
 // based on https://community.atmel.com/projects/sd-card-midi-player
 
-//#include <stdio.h>
+#include <stdio.h>
 #include <unistd.h>
-
-typedef signed char int8_t;
-typedef unsigned char uint8_t;
-
-typedef signed short int16_t;
-typedef unsigned short uint16_t;
-
-typedef signed int int32_t;
-typedef unsigned int uint32_t;
-
 
 // Controller
 #define MF_Bank_Select_MSB    0x00	// 0x00 .Bank Select MSB ( value 0x50 : Preset A Patch 1..128, 0x51 Preset B Patch 129..255 )
@@ -63,7 +53,7 @@ typedef unsigned int uint32_t;
 #define MF_Meta_Sequence         0x00  // Sequence number
 #define MF_Meta_Text             0x01  // Text event
 #define MF_Meta_Copyright        0x02  // Copyright
-#define MF_Meta_Track_name       0x03  // Track name
+#define MF_Meta_Track_name       0x03  // track name
 #define MF_Meta_Instrument_name  0x04  // Instrument name
 #define MF_Meta_Lyric            0x05  // Lyric text
 #define MF_Meta_Marker           0x06  // Marker text
@@ -71,13 +61,13 @@ typedef unsigned int uint32_t;
 #define MF_Meta_MIDI_channel     0x20  // MIDI channel
 #define MF_Meta_MIDI_Port        0x21  // MIDI Port
 #define MF_Meta_Track_End        0x2F  // End of track
-#define MF_Meta_Tempo            0x51  // Tempo setting
+#define MF_Meta_Tempo            0x51  // tempo setting
 #define MF_Meta_SMPTE_offset     0x54  // SMPTE offset
 #define MF_Meta_Time_signature   0x58  // Time signature
 #define MF_Meta_Key_signature    0x59  // Key signature
 #define MF_Meta_Special          0x7F  // Seq. special
 
-// FILE HEADER INFORMATION
+// FILE header INFORMATION
 typedef struct
 {
   uint8_t  chk[5];
@@ -109,8 +99,8 @@ typedef struct
 enum MIDIerrors
 {
   NoError        = 0,
-  badFileHeader  = 1,
-  badTrackHeader = 2,
+  badFileheader  = 1,
+  badTrackheader = 2,
   badEvent       = 3,
   endOfFile      = 4,
 	userStop       = 5
@@ -129,10 +119,7 @@ uint8_t  readNdata(uint8_t start);
 uint8_t  readTrackEvent(void);
 void     allSoundOff(void);
 
-// Midi file, type 0
-//FILE* inFile;
-
-// Position in Track
+// Position in track
 uint32_t tpos     = 0;
 uint32_t prevpos  = 0;
 
@@ -140,39 +127,54 @@ uint32_t prevpos  = 0;
 uint8_t runningEvent = 0;
 
 // TEMPO (microsec/beat)
-uint32_t Tempo = 500000;
+uint32_t tempo = 500000;
 
 // Shared variables
-MTHD Header;
-MTRK Track;
-MTEV Event;
+MTHD midiheader;
+MTRK miditrack;
+MTEV midievent;
 
 uint32_t millis, nextTime = 0;
 
+int sdDatIdx = 255;
+uint8_t* sdData = (uint8_t*)0x8000;
 
+// length is tracked by midi reader so we don't need to do it here
+//
 uint8_t SDgetc(void)
 {
-  return 123; //(uint8_t)fgetc(inFile);
+  ++sdDatIdx;
+  sdDatIdx &= 255;
+  if (sdDatIdx == 0) {
+    #asm
+    ld    a,14
+    ld    (16444),a
+    ld    hl,$8000
+    ld    (16446),hl
+    ld    (16447),hl
+    call  $1ff4
+    ld    a,(16445) ; result of read
+    #endasm
+  }
+
+  return sdData[sdDatIdx];
 }
 
 void MIDIinit(void)
 {
-  // Initialise the USART for MIDI transmission
 }
 
-void MidiOut( uint8_t x )
+void MidiOut(uint8_t x)
 {
-  //printf("%02x", x);
-  // Send a byte to the MIDI out port (Tx)
 }
 
 
 // Read a 16 bits integer
 uint16_t read16(void)
 {
-  uint16_t v;
-  v  = (SDgetc() << 8);
-  v |= SDgetc() ;
+  uint16_t v = SDgetc();
+  v = v * 256;
+  v += SDgetc();
   return v;
 }
 
@@ -180,11 +182,13 @@ uint16_t read16(void)
 // Read a 32 bits integer
 uint32_t read32(void)
 {
-  uint32_t v;
-  v  = SDgetc();
-  v = ( v << 8 ) | SDgetc();
-  v = ( v << 8 ) | SDgetc();
-  v = ( v << 8 ) | SDgetc();
+  uint32_t v = SDgetc();
+  v *= 256;
+  v += SDgetc();
+  v *= 256;
+  v += SDgetc();
+  v *= 256;
+  v += SDgetc();
   return v;
 }
 
@@ -193,7 +197,7 @@ uint32_t read32(void)
 uint8_t readTrackByte(void)
 {
   uint8_t c = 0;
-  if( tpos < Track.length )
+  if( tpos < miditrack.length )
   {
     c = SDgetc();
     tpos++;
@@ -218,16 +222,16 @@ uint32_t readVariableLength()
 }
 
 
-// Read "Event.nbdata" bytes in "Event.data[]" starting at "Event.data[start]"
-// Event.nbdata is not limited but we will store only "maxdata" and discard extra data
+// Read "midievent.nbdata" bytes in "midievent.data[]" starting at "midievent.data[start]"
+// midievent.nbdata is not limited but we will store only "maxdata" and discard extra data
 uint8_t readNdata( uint8_t start )
 {
   uint32_t i;
   uint8_t c;
-  for( i=start; i<Event.nbdata; i++ )
+  for( i=start; i<midievent.nbdata; i++ )
   {
     c = readTrackByte();
-    if( i < maxdata ) Event.data[i] = c;
+    if( i < maxdata ) midievent.data[i] = c;
   }
   return 0;
 }
@@ -248,34 +252,32 @@ void allSoundOff(void)
 }
 
 
-// Read MIDI file Header Chunk
+// Read MIDI file header Chunk
 uint8_t readHeaderChunk(void)
 {
-  for( int i=0; i<4; i++ ) Header.chk[i] = SDgetc();
-  Header.length   = read32();
-  Header.format   = read16();
-  Header.ntracks  = read16();
-  Header.division = read16();
-  Tempo = 500000.0; // Default tempo : 500000 microsec / beat
+  for( int i=0; i<4; i++ ) midiheader.chk[i] = SDgetc();
+  midiheader.length = read32();
 
-  printf("Type: %d\n", Header.format);
-  printf("Tracks: %d\n", Header.ntracks);
+  midiheader.format   = read16();
+  midiheader.ntracks  = read16();
+  midiheader.division = read16();
 
-  return ( Header.chk[0]=='M' && Header.chk[1]=='T' && Header.chk[2]=='h' && Header.chk[3]=='d' && Header.length==6 ? NoError : badFileHeader );
+  tempo = 500000; // Default tempo : 500000 microsec / beat
+
+  return midiheader.chk[0]=='M' && midiheader.chk[1]=='T' && midiheader.chk[2]=='h' && midiheader.chk[3]=='d' && midiheader.length == 6 ? NoError : badFileheader;
 }
 
 
-// Read MIDI file Track Chunk
+// Read MIDI file track Chunk
 uint8_t readTrackChunk(void)
 {
-  for( int i=0; i<4; i++ ) Track.chk[i] = SDgetc();
-  Track.length  = read32();
-  return ( Track.chk[0]=='M' && Track.chk[1]=='T' && Track.chk[2]=='r' && Track.chk[3]=='k' ? NoError : badTrackHeader );
+  for( int i=0; i<4; i++ ) miditrack.chk[i] = SDgetc();
+  miditrack.length  = read32();
+  return ( miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ? NoError : badTrackheader );
 }
 
 
-
-// Read MIDI file Track Event
+// Read MIDI file track event
 uint8_t readTrackEvent(void)
 {
   uint8_t c;
@@ -283,70 +285,69 @@ uint8_t readTrackEvent(void)
   uint32_t IRreceived;
   uint32_t time, buttonDelay=0;
   // Read time
-  Event.wait = readVariableLength();
+  midievent.wait = readVariableLength();
   // Read track event
-  Event.event = readTrackByte();
-  if( Event.event == 0xFF )
+  midievent.event = readTrackByte();
+  if( midievent.event == 0xFF )
   {
-    // Meta Event
+    // Meta event
     // read Meta event type
-    Event.mtype = readTrackByte();
+    midievent.mtype = readTrackByte();
     // read data length
-    Event.nbdata = readVariableLength();
+    midievent.nbdata = readVariableLength();
     // read data
     readNdata(0);
-    if( Event.mtype == MF_Meta_Tempo ) // Tempo
+    if( midievent.mtype == MF_Meta_Tempo ) // tempo
     {
-      Tempo = Event.data[0] * 65536 + Event.data[1] * 256 + Event.data[2];
+      tempo = midievent.data[0] * 65536 + midievent.data[1] * 256 + midievent.data[2];
    }
   }
-  else if( Event.event == 0XF0 || Event.event == 0xF7 )
+  else if( midievent.event == 0XF0 || midievent.event == 0xF7 )
   {
-    // SysEx Event
-    Event.nbdata = 0;
+    // SysEx event
+    midievent.nbdata = 0;
     do
     {
       // read one byte
       c = readTrackByte();
-      if( Event.nbdata < maxdata ) Event.data[Event.nbdata++] = c;
-    } while( c != 0xF7 && tpos < Track.length );
+      if( midievent.nbdata < maxdata ) midievent.data[midievent.nbdata++] = c;
+    } while( c != 0xF7 && tpos < miditrack.length );
   }
-  else if( Event.event & 0x80 )
+  else if( midievent.event & 0x80 )
   {
-    // Midi Event
-    runningEvent = Event.event;
+    // Midi event
+    runningEvent = midievent.event;
     // calculate the number of data bytes
-    Event.nbdata = ( (Event.event & 0xE0) == 0xC0 ? 1 : 2 );
+    midievent.nbdata = ( (midievent.event & 0xE0) == 0xC0 ? 1 : 2 );
     // Read data bytes
     readNdata(0);
   }
   else
   {
-    // Running Event
+    // Running event
     // transfer first byte from event to data
-    Event.data[0] = Event.event;
+    midievent.data[0] = midievent.event;
     // recall last event value
-    Event.event = runningEvent;
+    midievent.event = runningEvent;
     // calculate the number of data bytes
-    Event.nbdata = ( (runningEvent & 0xE0) == 0xC0 ? 1 : 2 );
+    midievent.nbdata = ( (runningEvent & 0xE0) == 0xC0 ? 1 : 2 );
     // Read data bytes (starting from the second one since the first byte is alread in data)
     readNdata(1);
   }
 
   // Calculate next time on which data shall be played
-  ms = ( Event.wait * Tempo ) / Header.division / 1000;
+  ms = ( midievent.wait * tempo ) / midiheader.division / 1000;
   nextTime += ms;
 
   // Output to MIDI device
-  if(  Event.event != 0xFF )
+  if(  midievent.event != 0xFF )
   {
     if (millis != nextTime) {
-      //printf("\nwait till %08d\n", nextTime);
       //usleep(ms * 1000);
       millis = nextTime;
     }
-    MidiOut( Event.event );
-    for( uint32_t i=0; i<Event.nbdata && i<maxdata; i++ ) MidiOut( Event.data[i] );
+    MidiOut( midievent.event );
+    for( uint32_t i=0; i<midievent.nbdata && i<maxdata; i++ ) MidiOut( midievent.data[i] );
   }
   return NoError;
 }
@@ -361,17 +362,17 @@ void readMidi(void)
   // Setup MIDI device
   MIDIinit();
 
-  // Read File Header Chunk
+  // Read File header Chunk
   err = readHeaderChunk();
 
   // Read succesive Tracks
-  for( i=1; i<=Header.ntracks && !err; i++ )
+  for( i=1; i<=midiheader.ntracks && !err; i++ )
   {
-    // Read Track Header Chunk
+    // Read track header Chunk
     err = readTrackChunk();
 
     // Read succesive Events
-    for( tpos=0; tpos < Track.length && !err; ) 
+    for( tpos=0; tpos < miditrack.length && !err; ) 
 		{
 			err = readTrackEvent();
 		}
