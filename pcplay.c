@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <stdint.h>
 
 // Controller
 #define MF_Bank_Select_MSB    0x00	// 0x00 .Bank Select MSB ( value 0x50 : Preset A Patch 1..128, 0x51 Preset B Patch 129..255 )
@@ -66,6 +67,8 @@
 #define MF_Meta_Time_signature   0x58  // Time signature
 #define MF_Meta_Key_signature    0x59  // Key signature
 #define MF_Meta_Special          0x7F  // Seq. special
+
+FILE* midiFile;
 
 // FILE header INFORMATION
 typedef struct
@@ -137,7 +140,7 @@ MTEV midievent;
 uint32_t millis, nextTime = 0;
 
 int sdDatIdx = 255;
-uint8_t* sdData = (uint8_t*)0x8000;
+uint8_t sdData[256];
 
 // length is tracked by midi reader so we don't need to do it here
 //
@@ -146,15 +149,8 @@ uint8_t SDgetc(void)
   ++sdDatIdx;
   sdDatIdx &= 255;
   if (sdDatIdx == 0) {
-    #asm
-    ld    a,14
-    ld    (16444),a
-    ld    hl,$8000
-    ld    (16446),hl
-    ld    (16447),hl
-    call  $1ff4
-    ld    a,(16445) ; result of read
-    #endasm
+    fread(sdData, 1, 256, midiFile);
+    sdDatIdx = 0;
   }
 
   return sdData[sdDatIdx];
@@ -166,6 +162,7 @@ void MIDIinit(void)
 
 void MidiOut(uint8_t x)
 {
+  printf("%02x  ", x);
 }
 
 
@@ -339,6 +336,8 @@ uint8_t readTrackEvent(void)
   ms = ( midievent.wait * tempo ) / midiheader.division / 1000;
   nextTime += ms;
 
+  printf("\nMS: %d\n", nextTime);
+
   // Output to MIDI device
   if(  midievent.event != 0xFF )
   {
@@ -368,6 +367,7 @@ void readMidi(void)
   // Read succesive Tracks
   for( i=1; i<=midiheader.ntracks && !err; i++ )
   {
+    printf("\n\nTRACK %d\n", i);
     // Read track header Chunk
     err = readTrackChunk();
 
@@ -379,92 +379,13 @@ void readMidi(void)
   }
 }
 
-// 16444 = pr_buff
-
-void cvtcmd(unsigned char* buf)
-{
-	while (*buf)
-	{
-		*buf = ascii_zx(*buf);
-		++buf;
-	}
-  --buf;
-  *buf = (*buf) + 128;
-}
-
-void terminate(unsigned char* name)
-{
-  name[strlen(name)-1] = name[strlen(name)-1] + 128;
-}
-
-unsigned char* zstrend(unsigned char* p)
-{
-  while(*p < 128) {
-    ++p;
-  }
-  return p;
-}
-
-unsigned char* zstrcpy(unsigned char* dest, char* str)
-{
-  int n = strlen(str);
-  strcpy(dest, str);
-  cvtcmd(dest);
-}
-
-
-int __FASTCALL__ zxpandCommand(unsigned char* cmdbuf)
-{
-  #asm
-  push  hl
-  #endasm
-
-  #asm
-  pop   de
-  call  $1ff2
-  ld    a,(16445)
-  ld    h,0
-  ld    l,a
-  #endasm
-}
 
 int main( int argc, char** argv )
 {
-  int nchars;
-  int retCode;
-  unsigned char* meta = 16444; // pr_buff
-
-  memset(0x8000,0,0x80);
-
-  const char* fname = 0x8008;
-  strcpy(0x8000, "ope fil   ");
-  cvtcmd(0x8000);
-
-  strcpy(0x8080, "get par *32776");
-  cvtcmd(0x8080);
-
-  retCode = zxpandCommand(0x8080);
-  if (retCode != 0x40) {
-    puts("failed to retrieve parameter.");
-    puts("example usage: load \"mp:file\"");
-    return retCode & 0x3f;
-  }
-
-  terminate(fname);
-
-  retCode = zxpandCommand(0x8000);
-  if (retCode != 0x40) {
-    unsigned char* p = zstrend(0x8000);
-    *p = *p ^ 128;
-    p = zstrcpy(p+1, ".mid");
-    *p = *p ^ 128;
-    retCode = zxpandCommand(0x8000);
-  }
-
-  if (retCode != 0x40) {
-    puts("failed to open file");
-    puts("example usage: load \"mp:file\"");
-    return retCode & 0x3f;
+  midiFile = fopen(argv[1], "rb");
+  if (!midiFile) {
+    puts("can't open input file.");
+    return 1;
   }
 
   readMidi();
