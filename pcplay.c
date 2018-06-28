@@ -341,8 +341,8 @@ uint8_t readTrackEvent(void)
   // Output to MIDI device
   if(  midievent.event != 0xFF )
   {
-    if (millis != nextTime) {
-      //usleep(ms * 1000);
+    while (nextTime > millis) {
+      // delay until millis is >= nexttime
       millis = nextTime;
     }
     MidiOut( midievent.event );
