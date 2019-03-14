@@ -1,2 +1,4 @@
-zcc +zx81 -startup=2 -lzx81_math -create-app tinymidiplay.c
-cp a.P zxpandsdcard/
+zcc +zx81 -m -startup=2 -lzx81_math -create-app tinymidiplay.c
+# cp a.P zxpandsdcard/
+cp a.P ~/Documents/OneDrive/Public/mp.p
+cp a.map ~/Documents/OneDrive/Public/mp.p.map

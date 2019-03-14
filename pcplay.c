@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 // Controller
-#define MF_Bank_Select_MSB    0x00	// 0x00 .Bank Select MSB ( value 0x50 : Preset A Patch 1..128, 0x51 Preset B Patch 129..255 )
-#define MF_Bank_Select_LSB    0x20	// 0x20 .Bank Select LSB ( value 0x00 )
+#define MF_Bank_Select_MSB    0x00	// 0x00 .Bank Select MSB (value 0x50 : Preset A Patch 1..128, 0x51 Preset B Patch 129..255)
+#define MF_Bank_Select_LSB    0x20	// 0x20 .Bank Select LSB (value 0x00)
 #define MF_Modulation         0x01	// 0x01 .Modulation
 #define MF_Breath             0x02	// 0x02  Breath Controller
 #define MF_Foot               0x04	// 0x04  Foot Controller
@@ -19,7 +19,7 @@
 #define MF_Effect_2           0x0D	// 0x0D  Effect Control 2
 #define MF_General_1to4       0x13	// 0x13  General-Purpose Controllers 1-4
 #define MF_Controller_LSB     0x3F	// 0x3F  LSB for controllers 0-31
-#define MF_Sustain            0x40	// 0x40 .Sustain( Damper pedal / Hold 1)
+#define MF_Sustain            0x40	// 0x40 .Sustain(Damper pedal / Hold 1)
 #define MF_Portamento         0x41	// 0x41 .Portamento
 #define MF_Sostenuto          0x42	// 0x42 .Sostenuto
 #define MF_Soft               0x43	// 0x43 .Soft Pedal
@@ -194,7 +194,7 @@ uint32_t read32(void)
 uint8_t readTrackByte(void)
 {
   uint8_t c = 0;
-  if( tpos < miditrack.length )
+  if (tpos < miditrack.length)
   {
     c = SDgetc();
     tpos++;
@@ -210,10 +210,10 @@ uint32_t readVariableLength()
   uint8_t c;
   c = readTrackByte();
   v = c & 0x7F;
-  while( c & 0x80 )
+  while (c & 0x80)
   {
     c = readTrackByte();
-    v = ( v << 7 ) | ( c & 0x7F );
+    v = (v << 7) | (c & 0x7F);
   }
   return v;
 }
@@ -221,14 +221,14 @@ uint32_t readVariableLength()
 
 // Read "midievent.nbdata" bytes in "midievent.data[]" starting at "midievent.data[start]"
 // midievent.nbdata is not limited but we will store only "maxdata" and discard extra data
-uint8_t readNdata( uint8_t start )
+uint8_t readNdata(uint8_t start)
 {
   uint32_t i;
   uint8_t c;
-  for( i=start; i<midievent.nbdata; i++ )
+  for (i=start; i<midievent.nbdata; i++)
   {
     c = readTrackByte();
-    if( i < maxdata ) midievent.data[i] = c;
+    if (i < maxdata) midievent.data[i] = c;
   }
   return 0;
 }
@@ -237,14 +237,14 @@ uint8_t readNdata( uint8_t start )
 // Send "All Sound Off" message to MIDI out
 void allSoundOff(void)
 {
-  for( uint8_t i=0x00; i<=0x0F; i++ )
+  for (uint8_t i=0x00; i<=0x0F; i++)
   {
-    MidiOut( 0xB0 | i );  // command: Channel Mode Message
-    MidiOut( 0x78 );      // data1:   All sounds Off : 0x78=120
-    MidiOut( 0x00 );      // data2:   "0"
-    MidiOut( 0xB0 | i );  // command: Channel Mode Message
-    MidiOut( 0x7B );      // data1:   All Notes  Off : 0x7B=123
-    MidiOut( 0x00 );      // data2:   "0"
+    MidiOut(0xB0 | i);  // command: Channel Mode Message
+    MidiOut(0x78);      // data1:   All sounds Off : 0x78=120
+    MidiOut(0x00);      // data2:   "0"
+    MidiOut(0xB0 | i);  // command: Channel Mode Message
+    MidiOut(0x7B);      // data1:   All Notes  Off : 0x7B=123
+    MidiOut(0x00);      // data2:   "0"
   }
 }
 
@@ -252,12 +252,15 @@ void allSoundOff(void)
 // Read MIDI file header Chunk
 uint8_t readHeaderChunk(void)
 {
-  for( int i=0; i<4; i++ ) midiheader.chk[i] = SDgetc();
+  for (int i=0; i<4; i++) midiheader.chk[i] = SDgetc();
   midiheader.length = read32();
 
   midiheader.format   = read16();
   midiheader.ntracks  = read16();
   midiheader.division = read16();
+
+  printf("format: type %0d\n", midiheader.format);
+  printf("tracks: %0d\n", midiheader.ntracks);
 
   tempo = 500000; // Default tempo : 500000 microsec / beat
 
@@ -268,9 +271,9 @@ uint8_t readHeaderChunk(void)
 // Read MIDI file track Chunk
 uint8_t readTrackChunk(void)
 {
-  for( int i=0; i<4; i++ ) miditrack.chk[i] = SDgetc();
+  for (int i=0; i<4; i++) miditrack.chk[i] = SDgetc();
   miditrack.length  = read32();
-  return ( miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ? NoError : badTrackheader );
+  return miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ? NoError : badTrackheader;
 }
 
 
@@ -285,7 +288,7 @@ uint8_t readTrackEvent(void)
   midievent.wait = readVariableLength();
   // Read track event
   midievent.event = readTrackByte();
-  if( midievent.event == 0xFF )
+  if (midievent.event == 0xFF)
   {
     // Meta event
     // read Meta event type
@@ -294,12 +297,13 @@ uint8_t readTrackEvent(void)
     midievent.nbdata = readVariableLength();
     // read data
     readNdata(0);
-    if( midievent.mtype == MF_Meta_Tempo ) // tempo
+    if (midievent.mtype == MF_Meta_Tempo) // tempo
     {
       tempo = midievent.data[0] * 65536 + midievent.data[1] * 256 + midievent.data[2];
+      printf("new tempo: %u", tempo);
    }
   }
-  else if( midievent.event == 0XF0 || midievent.event == 0xF7 )
+  else if (midievent.event == 0XF0 || midievent.event == 0xF7)
   {
     // SysEx event
     midievent.nbdata = 0;
@@ -307,15 +311,15 @@ uint8_t readTrackEvent(void)
     {
       // read one byte
       c = readTrackByte();
-      if( midievent.nbdata < maxdata ) midievent.data[midievent.nbdata++] = c;
-    } while( c != 0xF7 && tpos < miditrack.length );
+      if (midievent.nbdata < maxdata) midievent.data[midievent.nbdata++] = c;
+    } while (c != 0xF7 && tpos < miditrack.length);
   }
-  else if( midievent.event & 0x80 )
+  else if (midievent.event & 0x80)
   {
     // Midi event
     runningEvent = midievent.event;
     // calculate the number of data bytes
-    midievent.nbdata = ( (midievent.event & 0xE0) == 0xC0 ? 1 : 2 );
+    midievent.nbdata = ((midievent.event & 0xE0) == 0xC0 ? 1 : 2);
     // Read data bytes
     readNdata(0);
   }
@@ -327,26 +331,32 @@ uint8_t readTrackEvent(void)
     // recall last event value
     midievent.event = runningEvent;
     // calculate the number of data bytes
-    midievent.nbdata = ( (runningEvent & 0xE0) == 0xC0 ? 1 : 2 );
+    midievent.nbdata = ((runningEvent & 0xE0) == 0xC0 ? 1 : 2);
     // Read data bytes (starting from the second one since the first byte is alread in data)
     readNdata(1);
   }
 
   // Calculate next time on which data shall be played
-  ms = ( midievent.wait * tempo ) / midiheader.division / 1000;
+  ms = (midievent.wait * tempo) / midiheader.division / 1000;
   nextTime += ms;
 
-  printf("\nMS: %d\n", nextTime);
+  printf("\nMS (+%d) : %d\n", ms, nextTime);
 
   // Output to MIDI device
-  if(  midievent.event != 0xFF )
+  if (midievent.event != 0xFF)
   {
-    while (nextTime > millis) {
+    while (nextTime > millis)
+    {
       // delay until millis is >= nexttime
       millis = nextTime;
     }
-    MidiOut( midievent.event );
-    for( uint32_t i=0; i<midievent.nbdata && i<maxdata; i++ ) MidiOut( midievent.data[i] );
+
+    MidiOut(midievent.event);
+
+    for (uint32_t i=0; i<midievent.nbdata && i<maxdata; i++)
+    {
+      MidiOut(midievent.data[i]);
+    }
   }
   return NoError;
 }
@@ -365,14 +375,14 @@ void readMidi(void)
   err = readHeaderChunk();
 
   // Read succesive Tracks
-  for( i=1; i<=midiheader.ntracks && !err; i++ )
+  for (i=1; i<=midiheader.ntracks && !err; i++)
   {
     printf("\n\nTRACK %d\n", i);
     // Read track header Chunk
     err = readTrackChunk();
 
     // Read succesive Events
-    for( tpos=0; tpos < miditrack.length && !err; ) 
+    for (tpos=0; tpos < miditrack.length && !err;) 
 		{
 			err = readTrackEvent();
 		}
@@ -380,7 +390,7 @@ void readMidi(void)
 }
 
 
-int main( int argc, char** argv )
+int main(int argc, char** argv)
 {
   midiFile = fopen(argv[1], "rb");
   if (!midiFile) {

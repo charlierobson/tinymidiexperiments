@@ -70,7 +70,7 @@
 // FILE header INFORMATION
 typedef struct
 {
-  uint8_t  chk[5];
+  uint8_t  chk[4];
   uint32_t length;
   uint16_t format;
   uint16_t ntracks;
@@ -80,7 +80,7 @@ typedef struct
 // TRACK INFORMATION
 typedef struct
 {
-  uint8_t  chk[5];
+  uint8_t  chk[4];
   uint32_t length;
 } MTRK;
 
@@ -134,7 +134,8 @@ MTHD midiheader;
 MTRK miditrack;
 MTEV midievent;
 
-uint32_t millis, nextTime = 0;
+uint32_t millis = 0;
+uint32_t nextTime = 0;
 
 int sdDatIdx = 255;
 uint8_t* sdData = (uint8_t*)0x8000;
@@ -160,12 +161,104 @@ uint8_t SDgetc(void)
   return sdData[sdDatIdx];
 }
 
-void MIDIinit(void)
+
+
+// 16444 = pr_buff
+
+void cvtcmd(unsigned char* buf)
 {
+	while (*buf)
+	{
+		*buf = ascii_zx(*buf);
+		++buf;
+	}
+  --buf;
+  *buf = (*buf) + 128;
 }
 
-void MidiOut(uint8_t x)
+void terminate(unsigned char* name)
 {
+  name[strlen(name)-1] = name[strlen(name)-1] + 128;
+}
+
+unsigned char* zstrend(unsigned char* p)
+{
+  while(*p < 128) {
+    ++p;
+  }
+  return p;
+}
+
+unsigned char* zstrcpy(unsigned char* dest, char* str)
+{
+  int n = strlen(str);
+  strcpy(dest, str);
+  cvtcmd(dest);
+}
+
+
+int __FASTCALL__ zxpandCommand(unsigned char* cmdbuf)
+{
+  #asm
+  push  hl
+  #endasm
+
+  #asm
+  pop   de
+  call  $1ff2
+  ld    a,(16445)
+  ld    h,0
+  ld    l,a
+  #endasm
+}
+
+
+void initMidi(void)
+{
+  strcpy(0x8000, "ope mid");
+  cvtcmd(0x8000);
+  zxpandCommand(0x8000);
+  #asm
+  push  bc
+  ld    bc,$0007
+  ld    a,1
+  out   (c),a ; prep write
+  pop   bc
+  #endasm
+}
+
+void midiOut(uint8_t x)  __z88dk_fastcall __naked __preserves_regs(bc)
+{
+  #asm
+  push  bc
+  ld    bc,$4007
+  out   (c),l
+  pop   bc
+  ret
+  #endasm
+}
+
+void flushMidi() __naked __preserves_regs(bc)
+{
+  #asm
+  push  bc
+
+  ; send data buffer to serial
+  ld    bc,$e007
+  ld    a,$c0
+  out   (c),a
+
+  ; wait until done
+  call  $1ff6
+
+  ; prep write / reset buffer
+  ld    bc,$0007
+  ld    a,1
+  out   (c),a
+
+  pop   bc
+  ret
+  #endasm
 }
 
 
@@ -178,18 +271,20 @@ uint16_t read16(void)
   return v;
 }
 
+  union {
+    uint32_t whole;
+    uint8_t parts[4];
+  } longval;
+
 
 // Read a 32 bits integer
 uint32_t read32(void)
 {
-  uint32_t v = SDgetc();
-  v *= 256;
-  v += SDgetc();
-  v *= 256;
-  v += SDgetc();
-  v *= 256;
-  v += SDgetc();
-  return v;
+  longval.parts[3] = SDgetc();
+  longval.parts[2] = SDgetc();
+  longval.parts[1] = SDgetc();
+  longval.parts[0] = SDgetc();
+  return longval.whole;
 }
 
 
@@ -242,12 +337,12 @@ void allSoundOff(void)
 {
   for( uint8_t i=0x00; i<=0x0F; i++ )
   {
-    MidiOut( 0xB0 | i );  // command: Channel Mode Message
-    MidiOut( 0x78 );      // data1:   All sounds Off : 0x78=120
-    MidiOut( 0x00 );      // data2:   "0"
-    MidiOut( 0xB0 | i );  // command: Channel Mode Message
-    MidiOut( 0x7B );      // data1:   All Notes  Off : 0x7B=123
-    MidiOut( 0x00 );      // data2:   "0"
+    midiOut( 0xB0 | i );  // command: Channel Mode Message
+    midiOut( 0x78 );      // data1:   All sounds Off : 0x78=120
+    midiOut( 0x00 );      // data2:   "0"
+    midiOut( 0xB0 | i );  // command: Channel Mode Message
+    midiOut( 0x7B );      // data1:   All Notes  Off : 0x7B=123
+    midiOut( 0x00 );      // data2:   "0"
   }
 }
 
@@ -255,25 +350,39 @@ void allSoundOff(void)
 // Read MIDI file header Chunk
 uint8_t readHeaderChunk(void)
 {
-  for( int i=0; i<4; i++ ) midiheader.chk[i] = SDgetc();
-  midiheader.length = read32();
-
+  midiheader.chk[0] = SDgetc();
+  midiheader.chk[1] = SDgetc();
+  midiheader.chk[2] = SDgetc();
+  midiheader.chk[3] = SDgetc();
+  midiheader.length   = read32();
   midiheader.format   = read16();
   midiheader.ntracks  = read16();
   midiheader.division = read16();
 
   tempo = 500000; // Default tempo : 500000 microsec / beat
 
-  return midiheader.chk[0]=='M' && midiheader.chk[1]=='T' && midiheader.chk[2]=='h' && midiheader.chk[3]=='d' && midiheader.length == 6 ? NoError : badFileheader;
+  if (midiheader.chk[0]=='M' && midiheader.chk[1]=='T' && midiheader.chk[2]=='h' && midiheader.chk[3]=='d' && midiheader.length == 6) {
+    return 0;
+  }
+
+  return badFileheader;
 }
 
 
 // Read MIDI file track Chunk
 uint8_t readTrackChunk(void)
 {
-  for( int i=0; i<4; i++ ) miditrack.chk[i] = SDgetc();
+  miditrack.chk[0] = SDgetc();
+  miditrack.chk[1] = SDgetc();
+  miditrack.chk[2] = SDgetc();
+  miditrack.chk[3] = SDgetc();
   miditrack.length  = read32();
-  return ( miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ? NoError : badTrackheader );
+
+  if (miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ) {
+    return 0;
+  }
+
+  return badTrackheader;
 }
 
 
@@ -282,7 +391,6 @@ uint8_t readTrackEvent(void)
 {
   uint8_t c;
   uint32_t ms;
-  uint32_t IRreceived;
   uint32_t time, buttonDelay=0;
   // Read time
   midievent.wait = readVariableLength();
@@ -343,11 +451,15 @@ uint8_t readTrackEvent(void)
   if(  midievent.event != 0xFF )
   {
     if (millis != nextTime) {
+      // send queued midi & reset midi buffer
+      flushMidi();
       //usleep(ms * 1000);
       millis = nextTime;
     }
-    MidiOut( midievent.event );
-    for( uint32_t i=0; i<midievent.nbdata && i<maxdata; i++ ) MidiOut( midievent.data[i] );
+    midiOut( midievent.event );
+    for( uint32_t i=0; i<midievent.nbdata && i<maxdata; i++ ) {
+      midiOut( midievent.data[i] );
+    }
   }
   return NoError;
 }
@@ -360,16 +472,18 @@ void readMidi(void)
   uint8_t err;
 
   // Setup MIDI device
-  MIDIinit();
+  initMidi();
 
   // Read File header Chunk
   err = readHeaderChunk();
+  printf("err: %d", err);
 
   // Read succesive Tracks
-  for( i=1; i<=midiheader.ntracks && !err; i++ )
+  for( i=1; i <= midiheader.ntracks && !err; i++ )
   {
     // Read track header Chunk
     err = readTrackChunk();
+    printf("err: %d", err);
 
     // Read succesive Events
     for( tpos=0; tpos < miditrack.length && !err; ) 
@@ -379,53 +493,12 @@ void readMidi(void)
   }
 }
 
-// 16444 = pr_buff
 
-void cvtcmd(unsigned char* buf)
+int errorr(const char* errMsg, int code)
 {
-	while (*buf)
-	{
-		*buf = ascii_zx(*buf);
-		++buf;
-	}
-  --buf;
-  *buf = (*buf) + 128;
-}
-
-void terminate(unsigned char* name)
-{
-  name[strlen(name)-1] = name[strlen(name)-1] + 128;
-}
-
-unsigned char* zstrend(unsigned char* p)
-{
-  while(*p < 128) {
-    ++p;
-  }
-  return p;
-}
-
-unsigned char* zstrcpy(unsigned char* dest, char* str)
-{
-  int n = strlen(str);
-  strcpy(dest, str);
-  cvtcmd(dest);
-}
-
-
-int __FASTCALL__ zxpandCommand(unsigned char* cmdbuf)
-{
-  #asm
-  push  hl
-  #endasm
-
-  #asm
-  pop   de
-  call  $1ff2
-  ld    a,(16445)
-  ld    h,0
-  ld    l,a
-  #endasm
+    puts(errMsg);
+    puts("example usage: load \"mp:file\"");
+    return code;
 }
 
 int main( int argc, char** argv )
@@ -445,9 +518,7 @@ int main( int argc, char** argv )
 
   retCode = zxpandCommand(0x8080);
   if (retCode != 0x40) {
-    puts("failed to retrieve parameter.");
-    puts("example usage: load \"mp:file\"");
-    return retCode & 0x3f;
+    return errorr("failed to retrieve parameter.", retCode & 0x3f);
   }
 
   terminate(fname);
@@ -462,9 +533,7 @@ int main( int argc, char** argv )
   }
 
   if (retCode != 0x40) {
-    puts("failed to open file");
-    puts("example usage: load \"mp:file\"");
-    return retCode & 0x3f;
+    return errorr("failed to open file", retCode & 0x3f);
   }
 
   readMidi();
