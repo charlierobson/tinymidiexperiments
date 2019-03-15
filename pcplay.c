@@ -289,8 +289,6 @@ uint8_t readTrackEvent(void)
 {
   uint8_t c;
   uint32_t ms;
-  uint32_t IRreceived;
-  uint32_t time, buttonDelay=0;
   // Read time
   midievent.wait = readVariableLength();
   // Read track event

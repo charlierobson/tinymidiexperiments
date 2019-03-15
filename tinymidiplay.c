@@ -154,6 +154,15 @@ uint8_t SDgetc(void) __naked
 
     ld    (16446),a   ; 256 bytes to load
 
+    ld    bc,$e007    ; flush any midi bytes out of the input buffer before we overwrite it
+    ld    a,$c0
+    out   (c),a
+    call  $1ff6 ; wait for it ...
+    ld    bc,$0007
+    ld    a,1
+    out   (c),a
+    call  $1ff6 ; wait for it ...
+
     ld    a,14        ; 00001110  - read, wait and store
     ld    (16444),a
     ld    (16447),hl
@@ -396,7 +405,6 @@ uint8_t readTrackEvent(void)
 {
   uint8_t c;
   uint32_t ms;
-  uint32_t time, buttonDelay=0;
   // Read time
   midievent.wait = readVariableLength();
   // Read track event
