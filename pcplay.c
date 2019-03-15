@@ -160,9 +160,15 @@ void MIDIinit(void)
 {
 }
 
+int bc = 0;
+
 void MidiOut(uint8_t x)
 {
   printf("%02x  ", x);
+  FILE* f = fopen("serial.pc.bin", "ab");
+  fwrite((const void*)&x, 1,1, f);
+  fclose(f);
+  bc++;
 }
 
 
@@ -293,6 +299,8 @@ uint8_t readTrackEvent(void)
     // Meta event
     // read Meta event type
     midievent.mtype = readTrackByte();
+    printf("\nmeta event %d (%06x)", midievent.mtype, bc);
+
     // read data length
     midievent.nbdata = readVariableLength();
     // read data
@@ -300,11 +308,12 @@ uint8_t readTrackEvent(void)
     if (midievent.mtype == MF_Meta_Tempo) // tempo
     {
       tempo = midievent.data[0] * 65536 + midievent.data[1] * 256 + midievent.data[2];
-      printf("new tempo: %u", tempo);
+      printf("\nnew tempo: %u", tempo);
    }
   }
   else if (midievent.event == 0XF0 || midievent.event == 0xF7)
   {
+    printf("\nsysex event (%06x)", bc);
     // SysEx event
     midievent.nbdata = 0;
     do
@@ -317,6 +326,7 @@ uint8_t readTrackEvent(void)
   else if (midievent.event & 0x80)
   {
     // Midi event
+    printf("\nmidi event (%06x)", bc);
     runningEvent = midievent.event;
     // calculate the number of data bytes
     midievent.nbdata = ((midievent.event & 0xE0) == 0xC0 ? 1 : 2);
@@ -325,6 +335,7 @@ uint8_t readTrackEvent(void)
   }
   else
   {
+    printf("\nrunning event (%06x)", bc);
     // Running event
     // transfer first byte from event to data
     midievent.data[0] = midievent.event;
@@ -340,7 +351,7 @@ uint8_t readTrackEvent(void)
   ms = (midievent.wait * tempo) / midiheader.division / 1000;
   nextTime += ms;
 
-  printf("\nMS (+%d) : %d\n", ms, nextTime);
+  //printf("\nMS (+%d) : %d  (%06x)\n", ms, nextTime, bc);
 
   // Output to MIDI device
   if (midievent.event != 0xFF)
