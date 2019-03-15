@@ -85,7 +85,7 @@ typedef struct
 } MTRK;
 
 // EVENT INFORMATION
-#define maxdata 127
+#define maxdata 128
 typedef struct
 {
   uint32_t wait;
@@ -109,7 +109,7 @@ enum MIDIerrors
 // FUNCTIONS
 void     clearBuffer(void);
 uint8_t  readByte(void);
-uint8_t  readTrackByte(void);
+//uint8_t  readTrackByte(void);
 uint8_t  readHeaderChunk(void);
 uint8_t  readTrackChunk(void);
 uint16_t read16(void);
@@ -137,30 +137,38 @@ MTEV midievent;
 uint32_t millis = 0;
 uint32_t nextTime = 0;
 
-int sdDatIdx = 255;
-uint8_t* sdData = (uint8_t*)0x8000;
+uint8_t sdDatIdx = 255;
+uint8_t* sdData = (uint8_t*)0x8200;
 
 // length is tracked by midi reader so we don't need to do it here
 //
-uint8_t SDgetc(void)
+uint8_t SDgetc(void) __naked
 {
-  ++sdDatIdx;
-  sdDatIdx &= 255;
-  if (sdDatIdx == 0) {
     #asm
-    ld    a,14
+    ld    hl,$8200
+
+    ld    a,(_sdDatIdx)
+    inc   a
+    ld    (_sdDatIdx),a
+    jr    nz,getdata
+
+    ld    (16446),a   ; 256 bytes to load
+
+    ld    a,14        ; 00001110  - read, wait and store
     ld    (16444),a
-    ld    hl,$8000
-    ld    (16446),hl
     ld    (16447),hl
     call  $1ff4
-    ld    a,(16445) ; result of read
+
+    xor   a
+
+getdata:
+    ld    h,$82
+    ld    l,a
+    ld    l,(hl)
+    ld    h,0
+    ret
     #endasm
-  }
-
-  return sdData[sdDatIdx];
 }
-
 
 
 // 16444 = pr_buff
@@ -219,30 +227,24 @@ void initMidi(void)
   cvtcmd(0x8000);
   zxpandCommand(0x8000);
   #asm
-  push  bc
   ld    bc,$0007
   ld    a,1
   out   (c),a ; prep write
-  pop   bc
   #endasm
 }
 
-void midiOut(uint8_t x)  __z88dk_fastcall __naked __preserves_regs(bc)
+void midiOut(uint8_t x)  __z88dk_fastcall __naked
 {
   #asm
-  push  bc
   ld    bc,$4007
   out   (c),l
-  pop   bc
   ret
   #endasm
 }
 
-void flushMidi() __naked __preserves_regs(bc)
+void flushMidi() __naked
 {
   #asm
-  push  bc
-
   ; send data buffer to serial
   ld    bc,$e007
   ld    a,$c0
@@ -256,40 +258,40 @@ void flushMidi() __naked __preserves_regs(bc)
   ld    a,1
   out   (c),a
 
-  pop   bc
   ret
   #endasm
 }
 
 
-// Read a 16 bits integer
-uint16_t read16(void)
-{
-  uint16_t v = SDgetc();
-  v = v * 256;
-  v += SDgetc();
-  return v;
-}
-
   union {
-    uint32_t whole;
     uint8_t parts[4];
+    uint32_t whole32;
+    uint16_t whole16;
   } longval;
 
 
+// Read a 16 bits integer
+uint16_t read16(void) __z88dk_fastcall
+{
+  longval.parts[1] = SDgetc();
+  longval.parts[0] = SDgetc();
+  return longval.whole16;
+}
+
+
 // Read a 32 bits integer
-uint32_t read32(void)
+uint32_t read32(void) __z88dk_fastcall
 {
   longval.parts[3] = SDgetc();
   longval.parts[2] = SDgetc();
   longval.parts[1] = SDgetc();
   longval.parts[0] = SDgetc();
-  return longval.whole;
+  return longval.whole32;
 }
 
-
+/*
 // Read a byte but stops if size of the track is excessed
-uint8_t readTrackByte(void)
+uint8_t readTrackByte(void) __z88dk_fastcall
 {
   uint8_t c = 0;
   if( tpos < miditrack.length )
@@ -299,18 +301,20 @@ uint8_t readTrackByte(void)
   }
   return c;
 }
-
+*/
 
 // Read a MIDI "variable length" integer
-uint32_t readVariableLength()
+uint32_t readVariableLength() __z88dk_fastcall
 {
   uint32_t v = 0;
   uint8_t c;
-  c = readTrackByte();
+  //c = readTrackByte();
+  c = SDgetc(); ++tpos;
   v = c & 0x7F;
   while( c & 0x80 )
   {
-    c = readTrackByte();
+    //c = readTrackByte();
+    c = SDgetc(); ++tpos;
     v = ( v << 7 ) | ( c & 0x7F );
   }
   return v;
@@ -325,7 +329,8 @@ uint8_t readNdata( uint8_t start )
   uint8_t c;
   for( i=start; i<midievent.nbdata; i++ )
   {
-    c = readTrackByte();
+    //c = readTrackByte();
+    c = SDgetc(); ++tpos;
     if( i < maxdata ) midievent.data[i] = c;
   }
   return 0;
@@ -395,12 +400,15 @@ uint8_t readTrackEvent(void)
   // Read time
   midievent.wait = readVariableLength();
   // Read track event
-  midievent.event = readTrackByte();
+  //midievent.event = readTrackByte();
+  midievent.event = SDgetc(); ++tpos;
+
   if( midievent.event == 0xFF )
   {
     // Meta event
     // read Meta event type
-    midievent.mtype = readTrackByte();
+    //midievent.mtype = readTrackByte();
+    midievent.mtype = SDgetc(); ++tpos;
     // read data length
     midievent.nbdata = readVariableLength();
     // read data
@@ -417,7 +425,8 @@ uint8_t readTrackEvent(void)
     do
     {
       // read one byte
-      c = readTrackByte();
+      //c = readTrackByte();
+      c = SDgetc(); ++tpos;
       if( midievent.nbdata < maxdata ) midievent.data[midievent.nbdata++] = c;
     } while( c != 0xF7 && tpos < miditrack.length );
   }
@@ -476,19 +485,20 @@ void readMidi(void)
 
   // Read File header Chunk
   err = readHeaderChunk();
-  printf("err: %d", err);
+  if (err) printf("err reading header chunk");
 
   // Read succesive Tracks
   for( i=1; i <= midiheader.ntracks && !err; i++ )
   {
     // Read track header Chunk
     err = readTrackChunk();
-    printf("err: %d", err);
+   if (err) printf("err reading track chunk");
 
     // Read succesive Events
     for( tpos=0; tpos < miditrack.length && !err; ) 
 		{
 			err = readTrackEvent();
+      if (err) printf("err reading track event");
 		}
   }
 }

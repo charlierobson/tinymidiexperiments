@@ -138,7 +138,7 @@ MTRK miditrack;
 MTEV midievent;
 
 uint32_t millis, nextTime = 0;
-
+int32_t dpos = -1;
 int sdDatIdx = 255;
 uint8_t sdData[256];
 
@@ -150,9 +150,10 @@ uint8_t SDgetc(void)
   sdDatIdx &= 255;
   if (sdDatIdx == 0) {
     fread(sdData, 1, 256, midiFile);
-    sdDatIdx = 0;
+    printf("BUFFER: %02x", sdData[0]);
   }
 
+  dpos++;
   return sdData[sdDatIdx];
 }
 
@@ -299,7 +300,7 @@ uint8_t readTrackEvent(void)
     // Meta event
     // read Meta event type
     midievent.mtype = readTrackByte();
-    printf("\nmeta event %d (%06x)", midievent.mtype, bc);
+    printf("\nmeta event %d (%06x, %06x)", midievent.mtype, dpos, bc);
 
     // read data length
     midievent.nbdata = readVariableLength();
@@ -313,7 +314,7 @@ uint8_t readTrackEvent(void)
   }
   else if (midievent.event == 0XF0 || midievent.event == 0xF7)
   {
-    printf("\nsysex event (%06x)", bc);
+    printf("\nsysex event (%06x, %06x)", dpos, bc);
     // SysEx event
     midievent.nbdata = 0;
     do
@@ -326,8 +327,7 @@ uint8_t readTrackEvent(void)
   else if (midievent.event & 0x80)
   {
     // Midi event
-    printf("\nmidi event (%06x)", bc);
-    runningEvent = midievent.event;
+    printf("\nmidi event (%06x, %06x)", dpos, bc);
     // calculate the number of data bytes
     midievent.nbdata = ((midievent.event & 0xE0) == 0xC0 ? 1 : 2);
     // Read data bytes
@@ -335,7 +335,7 @@ uint8_t readTrackEvent(void)
   }
   else
   {
-    printf("\nrunning event (%06x)", bc);
+    printf("\nrunning event (%06x, %06x)", dpos, bc);
     // Running event
     // transfer first byte from event to data
     midievent.data[0] = midievent.event;
