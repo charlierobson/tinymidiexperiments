@@ -307,6 +307,7 @@ uint8_t readTrackEvent(void)
   else if (midievent.event & 0x80)
   {
     // Midi event
+    runningEvent = midievent.event;
     // calculate the number of data bytes
     midievent.nbdata = ((midievent.event & 0xE0) == 0xC0 ? 1 : 2);
     // Read data bytes
