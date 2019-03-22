@@ -1,6 +1,5 @@
 // based on https://community.atmel.com/projects/sd-card-midi-player
 
-#include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
 
@@ -106,7 +105,7 @@ enum MIDIerrors
   badTrackheader = 2,
   badEvent       = 3,
   endOfFile      = 4,
-	userStop       = 5
+  userStop       = 5
 };
 
 // FUNCTIONS
@@ -138,9 +137,7 @@ MTRK miditrack;
 MTEV midievent;
 
 uint32_t millis, nextTime = 0;
-int32_t dpos = -1;
 int sdDatIdx = 255;
-uint8_t sdData[256];
 
 // length is tracked by midi reader so we don't need to do it here
 //
@@ -152,7 +149,6 @@ uint8_t SDgetc(void)
     fread(sdData, 1, 256, midiFile);
   }
 
-  dpos++;
   return sdData[sdDatIdx];
 }
 
@@ -160,11 +156,8 @@ void MIDIinit(void)
 {
 }
 
-int b = 16;
-
 void MidiOut(uint8_t x)
 {
-  putc(x, stdout);
 }
 
 
@@ -314,7 +307,6 @@ uint8_t readTrackEvent(void)
   else if (midievent.event & 0x80)
   {
     // Midi event
-    runningEvent = midievent.event;
     // calculate the number of data bytes
     midievent.nbdata = ((midievent.event & 0xE0) == 0xC0 ? 1 : 2);
     // Read data bytes
@@ -343,7 +335,6 @@ uint8_t readTrackEvent(void)
     while (nextTime > millis)
     {
       // delay until millis is >= nexttime
-     // usleep((nextTime-millis) * 1000);
       millis = nextTime;
     }
 
@@ -378,23 +369,8 @@ void readMidi(void)
 
     // Read succesive Events
     for (tpos=0; tpos < miditrack.length && !err;) 
-		{
-			err = readTrackEvent();
-		}
+    {
+        err = readTrackEvent();
+    }
   }
-}
-
-
-int main(int argc, char** argv)
-{
-  midiFile = fopen(argv[1], "rb");
-  if (!midiFile) {
-    puts("can't open input file.");
-    return 1;
-  }
-
-  readMidi();
-  allSoundOff();
-
-  return 0;
 }
