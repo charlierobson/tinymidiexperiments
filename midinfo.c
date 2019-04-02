@@ -264,6 +264,7 @@ uint8_t readHeaderChunk(void)
 
   printf("Format: type %0d\n", midiheader.format);
   printf("Tracks: %0d\n", midiheader.ntracks);
+  printf("Division: %0d\n", midiheader.division);
 
   tempo = 500000; // Default tempo : 500000 microsec / beat
 
@@ -279,12 +280,15 @@ uint8_t readTrackChunk(void)
   return miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ? NoError : badTrackheader;
 }
 
+uint32_t nextTick = 0;
+double doubleTime = 0;
 
 // Read MIDI file track event
 uint8_t readTrackEvent(void)
 {
   uint8_t c;
   uint32_t ms;
+
   // Read time
   midievent.wait = readVariableLength();
   // Read track event
@@ -321,7 +325,7 @@ uint8_t readTrackEvent(void)
 
       bpm = 60000000 / tempo;
 
-      printf("BPM change: %d\n", bpm);
+      printf("BPM change: %d (%d)\n", bpm, tempo);
    }
   }
   else if (midievent.event == 0XF0 || midievent.event == 0xF7)
@@ -359,8 +363,24 @@ uint8_t readTrackEvent(void)
   }
 
   // Calculate next time on which data shall be played
-  ms = (midievent.wait * tempo) / midiheader.division / 1000;
+
+//  ms = (midievent.wait * tempo) / (midiheader.division * 1000);
+  ms = (midievent.wait * tempo) / midiheader.division;
   nextTime += ms;
+
+  doubleTime += (double)(midievent.wait * tempo) / (double)(midiheader.division * 1000);
+
+  // tickTime = time of next event in ticks
+  nextTick += midievent.wait;
+
+  // 
+
+  if (midievent.wait) {
+    printf("tempo %08x  wait %08x  division %08x\n", tempo, midievent.wait, midiheader.division);
+    printf("  ms  %08x (%d)\n", ms, nextTime / 1000);
+    printf("  ams          (%f)\n", doubleTime);
+  }
+
 
   return NoError;
 }
