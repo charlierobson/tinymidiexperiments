@@ -138,7 +138,9 @@ MTHD midiheader;
 MTRK miditrack;
 MTEV midievent;
 
-uint32_t millis, nextTime = 0;
+uint32_t nextTimeMS = 0;
+uint32_t nextTimeUS = 0;
+
 int32_t dpos = -1;
 int sdDatIdx = 255;
 uint8_t sdData[256];
@@ -280,19 +282,31 @@ uint8_t readTrackChunk(void)
   return miditrack.chk[0]=='M' && miditrack.chk[1]=='T' && miditrack.chk[2]=='r' && miditrack.chk[3]=='k' ? NoError : badTrackheader;
 }
 
-uint32_t nextTick = 0;
-double doubleTime = 0;
+uint32_t realTime = 0;
 
 // Read MIDI file track event
 uint8_t readTrackEvent(void)
 {
   uint8_t c;
-  uint32_t ms;
+  uint32_t ms, us;
 
   // Read time
   midievent.wait = readVariableLength();
+
   // Read track event
   midievent.event = readTrackByte();
+
+  // Calculate next time on which data shall be played
+
+  ms = (midievent.wait * tempo) / (midiheader.division * 1000);
+  us = midievent.wait * tempo / midiheader.division;
+  nextTimeMS += ms;
+  nextTimeUS += us;
+
+  if (nextTimeMS > realTime) {
+    realTime = nextTimeMS;
+  } 
+
   if (midievent.event == 0xFF)
   {
     // Meta event
@@ -343,6 +357,9 @@ uint8_t readTrackEvent(void)
   {
     // Midi event
     runningEvent = midievent.event;
+    if ((midievent.event & 0xf0) == 0x90) {
+      printf("Note @ %d\n", realTime);
+    }
     // calculate the number of  data bytes
     midievent.nbdata = ((midievent.event & 0xE0) == 0xC0 ? 1 : 2);
     // Read data bytes
@@ -362,26 +379,14 @@ uint8_t readTrackEvent(void)
     readNdata(1);
   }
 
-  // Calculate next time on which data shall be played
-
-//  ms = (midievent.wait * tempo) / (midiheader.division * 1000);
-  ms = (midievent.wait * tempo) / midiheader.division;
-  nextTime += ms;
-
-  doubleTime += (double)(midievent.wait * tempo) / (double)(midiheader.division * 1000);
-
-  // tickTime = time of next event in ticks
-  nextTick += midievent.wait;
-
-  // 
-
+/*
   if (midievent.wait) {
     printf("tempo %08x  wait %08x  division %08x\n", tempo, midievent.wait, midiheader.division);
-    printf("  ms  %08x (%d)\n", ms, nextTime / 1000);
-    printf("  ams          (%f)\n", doubleTime);
+    printf("  ms  %04x (%08x)\n", ms, nextTimeMS);
+    printf("  us  %04x (%08x)\n", us, nextTimeUS);
+    printf("           (%08x)\n", nextTimeUS/1000);
   }
-
-
+*/
   return NoError;
 }
 
